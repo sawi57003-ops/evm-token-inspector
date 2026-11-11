@@ -1,0 +1,7 @@
+name: evm-token-inspector
+version: 1.0.0
+description: "Inspect any EVM token contract before you interact with it: name, symbol, decimals, supply, owner/renounced status, proxy detection, and the DEX V2 pair + liquidity reserves. Read-only, public RPCs only, no API key, no signing."
+author: sawi57003-ops
+hooks: []
+provides_tools:
+  - evm_token_check
