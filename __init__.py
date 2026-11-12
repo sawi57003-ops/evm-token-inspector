@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import urllib.request
 from typing import Any
@@ -141,9 +142,28 @@ def _http_post_json(url: str, body: bytes) -> dict:
     try:
         import subprocess
 
+        # Minimal env for curl: PATH plus the proxy vars this host needs
+        # to reach the internet. No provider API keys are inherited, and
+        # -q stops a user ~/.curlrc from changing the request.
+        _env = {"PATH": os.environ.get("PATH", "")}
+        for _k in (
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "no_proxy",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "NO_PROXY",
+            "NODE_USE_ENV_PROXY",
+        ):
+            if _k in os.environ:
+                _env[_k] = os.environ[_k]
+
         proc = subprocess.run(
             [
                 "curl",
+                "-q",
                 "-s",
                 "-m",
                 str(_TIMEOUT_S),
@@ -160,6 +180,7 @@ def _http_post_json(url: str, body: bytes) -> dict:
             capture_output=True,
             text=True,
             timeout=_TIMEOUT_S + 5,
+            env=_env,
         )
         if proc.returncode != 0:
             raise RuntimeError("curl exit %d: %s" % (proc.returncode, proc.stderr[:200]))
@@ -264,7 +285,11 @@ def _inspect_token(address: str, chain: str) -> dict:
     symbol_raw = _try_call(rpc_urls, address, "0x" + _SEL_SYMBOL)
     out["symbol"] = _decode_string(symbol_raw) if symbol_raw else None
     dec_raw = _try_call(rpc_urls, address, "0x" + _SEL_DECIMALS)
-    out["decimals"] = _decode_uint(dec_raw) if dec_raw else None
+    dec_val = _decode_uint(dec_raw) if dec_raw else None
+    # ERC-20 decimals is a uint8. A hostile token can return a huge value
+    # and hang / OOM the tool in `10 ** decimals`, so anything above 255
+    # is treated as invalid: decimals null, total_supply skipped.
+    out["decimals"] = dec_val if (dec_val is not None and dec_val <= 255) else None
     supply_raw = _try_call(rpc_urls, address, "0x" + _SEL_TOTAL_SUPPLY)
     out["total_supply_raw"] = (
         str(_decode_uint(supply_raw)) if supply_raw else None
